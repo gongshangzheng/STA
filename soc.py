@@ -739,19 +739,42 @@ class obstacleDetecteur():
 
 # model = obstacleDetecteur()
 # model.predict_video("/content/obstacle.mp4")
+def count_generator(gen):
+    # 创建一个新的生成器副本
+    gen1, gen2 = itertools.tee(gen)
+    nombre_panneaux = sum(1 for _ in gen1)
+    return nombre_panneaux, gen2
 
+# 使用方法
+nombre_panneaux, clss_panneaux = count_generator(clss_panneaux)
+@dataclass
 class Message:
-    def __init__(self, angle:float, panneaux:list, distances:list):
-        self.angle= angle
-        self.panneaux = panneaux
-        self.nombre_panneaux = len(panneaux)
-        self.distance_ia = distances
-        self.nombre_obstacles = len(distances)
+    angle: float
+    panneaux: list
+    distance_ia: list
 
-        print("angle: ", angle,"classes: ", panneaux, "distance of obstacle: ", distance)
+    def __post_init__(self):
+        self.nombre_panneaux = count_generator(self.panneaux)
+        self.nombre_obstacles = count_generator(self.distance_ia)
+        print(f"angle: {self.angle}, classes: {self.panneaux}, distance of obstacle: {self.distance_ia}")
+
     def encode(self):
-        return f"{self.angle},{self.panneaux},{self.distance}".encode('utf-8')
-# In[ ]:
+        # 使用json序列化，可以处理更复杂的数据结构
+        return json.dumps({
+            'angle': self.angle,
+            'panneaux': self.panneaux,
+            'distances': self.distance_ia
+        }).encode('utf-8')
+
+    @classmethod
+    def decode(cls, encoded_data):
+        # 解码方法，用于反序列化
+        data = json.loads(encoded_data.decode('utf-8'))
+        return cls(
+            angle=data['angle'],
+            panneaux=data['panneaux'],
+            distance_ia=data['distances']
+        )# In[ ]:
 
 def real_time():
     # Start capturing from the webcam
