@@ -6,7 +6,7 @@
 
 import math
 import time
-
+from dataclasses import dataclass, field
 import cv2
 import torch
 import numpy as np
@@ -19,6 +19,7 @@ import concurrent.futures
 # import onnxruntime as ort
 from ultralytics import YOLO
 import socket
+import itertools
 
 
 # In[ ]:
@@ -745,8 +746,6 @@ def count_generator(gen):
     nombre_panneaux = sum(1 for _ in gen1)
     return nombre_panneaux, gen2
 
-# 使用方法
-nombre_panneaux, clss_panneaux = count_generator(clss_panneaux)
 @dataclass
 class Message:
     angle: float
@@ -759,11 +758,14 @@ class Message:
         print(f"angle: {self.angle}, classes: {self.panneaux}, distance of obstacle: {self.distance_ia}")
 
     def encode(self):
+                print(distance)
         # 使用json序列化，可以处理更复杂的数据结构
         return json.dumps({
             'angle': self.angle,
             'panneaux': self.panneaux,
-            'distances': self.distance_ia
+            'distances': self.distance_ia,
+            'nombre_panneaux': self.nombre_panneaux,
+            'nombre_obstacles': self.nombre_obstacles,
         }).encode('utf-8')
 
     @classmethod
@@ -778,7 +780,6 @@ class Message:
 
 def real_time():
     # Start capturing from the webcam
-    print("real time")
     camera = picamera2.Picamera2()
     camera_config = camera.create_preview_configuration(main={"size": (640, 480)})
     camera.configure(camera_config)
@@ -790,25 +791,25 @@ def real_time():
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_port = 12345
     try:
-        print("try")
         while True:  # Continuous capture and processing
-            print("true")
             # Use concurrent.futures to run detection models in parallel
             with concurrent.futures.ThreadPoolExecutor() as executor:
 
-                print("detection process")
                 # Submit parallel tasks for each detection model
-                panneaux_future = executor.submit(panneaux.predict_real_time, camera, camera_config, output=False)
                 lane_future = executor.submit(lane.predict_angle_realtime, camera, output=False)
+                panneaux_future = executor.submit(panneaux.predict_real_time, camera, camera_config, output=False)
                 obstacle_future = executor.submit(obstacle.predict_real_time, camera, camera_config, output=False)
 
                 # Wait and get results
-                clss_panneaux = panneaux_future.result()
-                angle = lane_future.result()
-                distance = obstacle_future.result()
+                clss_panneaux = list(panneaux_future.result())
+                print(clss_panneaux)
+                angle = float(lane_future.result())
+                distance = list(obstacle_future.result())
+                print(f"angle: {angle}, classes: {clss_panneaux}, distance of obstacle: {distance}")
 
                 # Create and send message
                 message = Message(angle, clss_panneaux, distance).encode()
+                print("message")
                 print("message: ", message)
 
                 try:
