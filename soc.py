@@ -775,9 +775,9 @@ def real_time():
 
                 print("detection process")
                 # Submit parallel tasks for each detection model
-                panneaux_future = executor.submit(panneaux.predict_real_time, camera, camera_config, outpt=False)
+                panneaux_future = executor.submit(panneaux.predict_real_time, camera, camera_config, output=False)
                 lane_future = executor.submit(lane.predict_angle_realtime, camera, output=False)
-                obstacle_future = executor.submit(obstacle.predict_real_time, camera, camera_config, outpuyt=False)
+                obstacle_future = executor.submit(obstacle.predict_real_time, camera, camera_config, output=False)
 
                 # Wait and get results
                 clss_panneaux = panneaux_future.result()
