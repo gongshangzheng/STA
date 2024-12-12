@@ -1359,6 +1359,7 @@ class Message:
 
 def real_time():
     # Start capturing from the webcam
+    print("real time")
     camera = picamera2.Picamera2()
     camera_config = camera.create_preview_configuration(main={"size": (640, 480)})
     camera.configure(camera_config)
@@ -1366,13 +1367,17 @@ def real_time():
     panneaux = panneauxDetecteur()
     obstacle = obstacleDetecteur()
     lane = laneDetecteur()
-    server_ip = "192.168.1.119"
+    server_ip = "127.0.0.1"
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_port = 8080
+    server_port = 12345
     try:
+        print("try")
         while True:  # Continuous capture and processing
+            print("true")
             # Use concurrent.futures to run detection models in parallel
             with concurrent.futures.ThreadPoolExecutor() as executor:
+
+                print("detection process")
                 # Submit parallel tasks for each detection model
                 panneaux_future = executor.submit(panneaux.predict_real_time, camera, camera_config, outpt=False)
                 lane_future = executor.submit(lane.predict_angle_realtime, camera, output=False)
