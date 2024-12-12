@@ -369,56 +369,55 @@ class laneDetecteur():
             fps = camera.framerate
             out = cv2.VideoWriter('output_direction_realtime.mp4', fourcc, fps, (frame_width, frame_height))
         try:
-            while True:
-                # Capture a frame from the camera
-                frame = camera.capture_array()
-                # Process the frame
-                copy = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                copy[:frame.shape[0] // 2, :] = 0
-                isolated = self.get_isolated(copy, None)
-                lines = cv2.HoughLinesP(isolated, 1, np.pi / 180, 2, np.array([]), minLineLength=40, maxLineGap=2)
-                averaged_lines = self.average(copy, lines)
+            # Capture a frame from the camera
+            frame = camera.capture_array()
+            # Process the frame
+            copy = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            copy[:frame.shape[0] // 2, :] = 0
+            isolated = self.get_isolated(copy, None)
+            lines = cv2.HoughLinesP(isolated, 1, np.pi / 180, 2, np.array([]), minLineLength=40, maxLineGap=2)
+            averaged_lines = self.average(copy, lines)
 
-                # Return the intersection of the two lines
-                current_x = frame.shape[1] / 2
-                current_y = frame.shape[0]
-                angle_degrees = 90
-                limit = 10000
-                if averaged_lines is not None and len(averaged_lines) == 2:
-                    x1, y1, x2, y2 = averaged_lines[0]
-                    x3, y3, x4, y4 = averaged_lines[1]
-                    if all(-limit < x < limit and -limit < y < limit for x, y in [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]):
-                        denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
-                        if denominator != 0:
-                            # Calculate intersection point
-                            intersection_x = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denominator
-                            intersection_y = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denominator
+            # Return the intersection of the two lines
+            current_x = frame.shape[1] / 2
+            current_y = frame.shape[0]
+            angle_degrees = 90
+            limit = 10000
+            if averaged_lines is not None and len(averaged_lines) == 2:
+                x1, y1, x2, y2 = averaged_lines[0]
+                x3, y3, x4, y4 = averaged_lines[1]
+                if all(-limit < x < limit and -limit < y < limit for x, y in [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]):
+                    denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+                    if denominator != 0:
+                        # Calculate intersection point
+                        intersection_x = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denominator
+                        intersection_y = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denominator
 
-                            # Calculate the angle in degrees
-                            angle_radians = - math.atan2(intersection_y - current_y, intersection_x - current_x)
-                            angle_degrees = math.degrees(angle_radians)
+                        # Calculate the angle in degrees
+                        angle_radians = - math.atan2(intersection_y - current_y, intersection_x - current_x)
+                        angle_degrees = math.degrees(angle_radians)
 
-                            # Display the guiding line on the frame
-                            if output:
-                                longueur = 3000
-                                end_x = current_x + longueur * math.cos(angle_radians)
-                                end_y = current_y - longueur * math.sin(angle_radians)
-                                cv2.line(frame, (int(current_x), int(current_y)), (int(end_x), int(end_y)), (0, 255, 0), 2)
-                                cv2.line(frame, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 2)
-                                cv2.line(frame, (int(x3), int(y3)), (int(x4), int(y4)), (255, 0, 0), 2)
-                                cv2.putText(frame, f"angle: {angle_degrees:.2f} degrees", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                                out.write(frame)
+                        # Display the guiding line on the frame
+                        if output:
+                            longueur = 3000
+                            end_x = current_x + longueur * math.cos(angle_radians)
+                            end_y = current_y - longueur * math.sin(angle_radians)
+                            cv2.line(frame, (int(current_x), int(current_y)), (int(end_x), int(end_y)), (0, 255, 0), 2)
+                            cv2.line(frame, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 2)
+                            cv2.line(frame, (int(x3), int(y3)), (int(x4), int(y4)), (255, 0, 0), 2)
+                            cv2.putText(frame, f"angle: {angle_degrees:.2f} degrees", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                            out.write(frame)
 
-                # Show the frame in real-time
-                if output:
-                    cv2.imshow("real-time lane angle prediction", frame)
 
-                # Yield the angle prediction
-                yield angle_degrees
+            # Show the frame in real-time
+            if output:
+                cv2.imshow("real-time lane angle prediction", frame)
 
-                # Press 'q' to exit
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
+            # Press 'q' to exit
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+            return angle_degrees
         finally:
 
             camera.stop()
@@ -426,6 +425,9 @@ class laneDetecteur():
             if output:
                 out.release()
             cv2.destroyAllWindows()
+            # Yield the angle prediction
+
+
 
     def predict_single_image(self, frame):
         """
@@ -572,39 +574,38 @@ class panneauxDetecteur():
 
         # 开始实时处理
         try:
-            while True:
-                frame = camera.capture_array()
-                image = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            frame = camera.capture_array()
+            image = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-                # 使用 YOLOv8 模型进行推理
-                results = self.yolo_model(image, conf=self.confidence)
-                classes = []  # List to store detected classes
+            # 使用 YOLOv8 模型进行推理
+            results = self.yolo_model(image, conf=self.confidence)
+            classes = []  # List to store detected classes
 
-                # 处理每个检测结果，绘制边界框和标签
-                for result in results:
-                    if output:
-                        boxes = result.boxes.xyxy  # 获取边界框坐标 (x1, y1, x2, y2)
-                        confidences = result.boxes.conf  # 获取置信度
-
-                        for box, conf, cls in zip(boxes, confidences, result.boxes.cls):
-                            x1, y1, x2, y2 = map(int, box)
-                            label = f'{result.names[int(cls.item())]}: {conf.item():.2f}'
-                            # 绘制边界框和标签
-                            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                            cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                            classes.append(result.names[int(cls)])
-
-                # 显示帧率并显示帧图像
+            # 处理每个检测结果，绘制边界框和标签
+            for result in results:
                 if output:
-                    cv2.imshow("Real-Time YOLOv8", image)
-                    out.write(image)
+                    boxes = result.boxes.xyxy  # 获取边界框坐标 (x1, y1, x2, y2)
+                    confidences = result.boxes.conf  # 获取置信度
 
-                # 按下 'q' 键退出循环
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
+                    for box, conf, cls in zip(boxes, confidences, result.boxes.cls):
+                        x1, y1, x2, y2 = map(int, box)
+                        label = f'{result.names[int(cls.item())]}: {conf.item():.2f}'
+                        # 绘制边界框和标签
+                        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                        classes.append(result.names[int(cls)])
 
-                # Yield detected classes for further processing
-                yield classes
+            # 显示帧率并显示帧图像
+            if output:
+                cv2.imshow("Real-Time YOLOv8", image)
+                out.write(image)
+
+            # 按下 'q' 键退出循环
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+            # Yield detected classes for further processing
+            return classes
         finally:
             camera.stop()
             # 释放资源
@@ -686,40 +687,39 @@ class obstacleDetecteur():
 
         # 开始实时处理
         try:
-            while True:
-                frame = camera.capture_array()
-                # 使用 YOLOv8 模型进行推理
-                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                results = self.yolo_model(frame, conf=self.confidence)
-                # Collect classes detected in this frame
-                # 处理每个检测结果，绘制边界框和标签
-                distances = []
-                for result in results:
-                    for box in result.boxes.xywh:
-                        width = box[2]
-                        distance = self.calculate_distance(width)
-                        distances.append(distance)
-                    if output:
-                        boxes = result.boxes.xyxy  # 提取边界框 (x1, y1, x2, y2)
-                        confidences = result.boxes.conf  # 置信度
-
-                        for box, conf, cls in zip(boxes, confidences, result.boxes.cls):
-                                x1, y1, x2, y2 = map(int, box)
-                                label = f'{result.names[int(cls.item())]}: {conf.item():.2f}'
-
-                                # 绘制边界框和标签
-                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-                # 显示帧率
+            frame = camera.capture_array()
+            # 使用 YOLOv8 模型进行推理
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            results = self.yolo_model(frame, conf=self.confidence)
+            # Collect classes detected in this frame
+            # 处理每个检测结果，绘制边界框和标签
+            distances = []
+            for result in results:
+                for box in result.boxes.xywh:
+                    width = box[2]
+                    distance = self.calculate_distance(width)
+                    distances.append(distance)
                 if output:
-                    cv2.imshow("Real-Time YOLOv8", frame)
-                    out.write(frame)
+                    boxes = result.boxes.xyxy  # 提取边界框 (x1, y1, x2, y2)
+                    confidences = result.boxes.conf  # 置信度
 
-                    # 按下 'q' 键退出循环
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
-                yield distances
+                    for box, conf, cls in zip(boxes, confidences, result.boxes.cls):
+                            x1, y1, x2, y2 = map(int, box)
+                            label = f'{result.names[int(cls.item())]}: {conf.item():.2f}'
+
+                            # 绘制边界框和标签
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+            # 显示帧率
+            if output:
+                cv2.imshow("Real-Time YOLOv8", frame)
+                out.write(frame)
+
+                # 按下 'q' 键退出循环
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+            return distances
 
         finally:
 
@@ -731,7 +731,7 @@ class obstacleDetecteur():
 
     def calculate_distance(self, width):
         # 假设车辆的实际宽度为 1.8 米，相机焦距为 800 像素
-        KNOWN_WIDTH = 1.8  # 车辆的已知宽度（米）
+        KNOWN_WIDTH = 0.018  # 车辆的已知宽度（米）
         FOCAL_LENGTH = 800  # 焦距（像素）
 
         return KNOWN_WIDTH * FOCAL_LENGTH / width
@@ -753,20 +753,19 @@ class Message:
     distance_ia: list
 
     def __post_init__(self):
-        self.nombre_panneaux = count_generator(self.panneaux)
-        self.nombre_obstacles = count_generator(self.distance_ia)
+        self.nombre_panneaux = len(list(self.panneaux))
+        self.nombre_obstacles = len(list(self.distance_ia))
         print(f"angle: {self.angle}, classes: {self.panneaux}, distance of obstacle: {self.distance_ia}")
 
     def encode(self):
-                print(distance)
+        print(distance)
         # 使用json序列化，可以处理更复杂的数据结构
         return json.dumps({
             'angle': self.angle,
             'panneaux': self.panneaux,
             'distances': self.distance_ia,
             'nombre_panneaux': self.nombre_panneaux,
-            'nombre_obstacles': self.nombre_obstacles,
-        }).encode('utf-8')
+            'nombre_obstacles': self.nombre_obstacles}).encode('utf-8')
 
     @classmethod
     def decode(cls, encoded_data):
@@ -801,10 +800,10 @@ def real_time():
                 obstacle_future = executor.submit(obstacle.predict_real_time, camera, camera_config, output=False)
 
                 # Wait and get results
-                clss_panneaux = list(panneaux_future.result())
+                clss_panneaux = panneaux_future.result()
                 print(clss_panneaux)
-                angle = float(lane_future.result())
-                distance = list(obstacle_future.result())
+                angle = lane_future.result()
+                distance = obstacle_future.result()
                 print(f"angle: {angle}, classes: {clss_panneaux}, distance of obstacle: {distance}")
 
                 # Create and send message
