@@ -3,6 +3,7 @@
 
 # In[ ]:
 
+import json
 
 import math
 import time
@@ -413,9 +414,10 @@ class laneDetecteur():
             if output:
                 cv2.imshow("real-time lane angle prediction", frame)
 
-            # Press 'q' to exit
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                # Press 'q' to exit
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    
+                    return angle_degrees
 
             return angle_degrees
         finally:
@@ -558,8 +560,7 @@ class panneauxDetecteur():
                 label = f'{class_names[int(cls)]}: {conf:.2f}'  # 获取类别名称并显示置信度
                 cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         return image
-
-    def predict_real_time(self, camera, config, output=True):
+    def predict_real_time(self, camera, config, output=False):
         """
         Real-time prediction using YOLOv8 for object detection.
 
@@ -593,16 +594,20 @@ class panneauxDetecteur():
                         # 绘制边界框和标签
                         cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                         cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                else:
+                    for cls in result.boxes.cls:
                         classes.append(result.names[int(cls)])
+
+
 
             # 显示帧率并显示帧图像
             if output:
                 cv2.imshow("Real-Time YOLOv8", image)
                 out.write(image)
 
-            # 按下 'q' 键退出循环
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                # 按下 'q' 键退出循环
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    return classes
 
             # Yield detected classes for further processing
             return classes
@@ -611,7 +616,7 @@ class panneauxDetecteur():
             # 释放资源
             if output:
                 out.release()
-            cv2.destroyAllWindows()
+                cv2.destroyAllWindows()
 class obstacleDetecteur():
     def __init__(self):
         self.working_dir = "./"
@@ -718,7 +723,7 @@ class obstacleDetecteur():
 
                 # 按下 'q' 键退出循环
                 if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
+                    return distances
             return distances
 
         finally:
@@ -755,10 +760,8 @@ class Message:
     def __post_init__(self):
         self.nombre_panneaux = len(list(self.panneaux))
         self.nombre_obstacles = len(list(self.distance_ia))
-        print(f"angle: {self.angle}, classes: {self.panneaux}, distance of obstacle: {self.distance_ia}")
-
+        #print(f"angle: {self.angle}, classes: {self.panneaux}, distance of obstacle: {self.distance_ia}")
     def encode(self):
-        print(distance)
         # 使用json序列化，可以处理更复杂的数据结构
         return json.dumps({
             'angle': self.angle,
@@ -788,35 +791,67 @@ def real_time():
     lane = laneDetecteur()
     server_ip = "127.0.0.1"
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_port = 12345
+    server_port = 8080
     try:
+        #i = 1
         while True:  # Continuous capture and processing
             # Use concurrent.futures to run detection models in parallel
-            with concurrent.futures.ThreadPoolExecutor() as executor:
+            #print(f"le {i} fois")
+            #i += 1
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
 
-                # Submit parallel tasks for each detection model
-                lane_future = executor.submit(lane.predict_angle_realtime, camera, output=False)
-                panneaux_future = executor.submit(panneaux.predict_real_time, camera, camera_config, output=False)
-                obstacle_future = executor.submit(obstacle.predict_real_time, camera, camera_config, output=False)
+                try:
+                    # Submit parallel tasks for each detection model
+                    lane_future = executor.submit(lane.predict_angle_realtime, camera, output=False)
+                    #print("lane")
+                    panneaux_future = executor.submit(panneaux.predict_real_time, camera,camera_config, output=False)
+                    #print("panneaux") 
+                    obstacle_future = executor.submit(obstacle.predict_real_time, camera, camera_config, output=False)
+                    #print("obstacle")
 
-                # Wait and get results
-                clss_panneaux = panneaux_future.result()
-                print(clss_panneaux)
-                angle = lane_future.result()
-                distance = obstacle_future.result()
-                print(f"angle: {angle}, classes: {clss_panneaux}, distance of obstacle: {distance}")
+                    # Wait and get results
+                    clss_panneaux = panneaux_future.result(timeout=8)
+                    print("clss_panneaux:", clss_panneaux)
+                except concurrent.futures.TimeoutError:
+                    print("panneaux detection timed out")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
 
+                try:
+                    angle = lane_future.result(timeout=8)
+                    print("angle:", angle)
+                except concurrent.futures.TimeoutError:
+                    print("lane segmentation task timed out")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+
+                try:
+                    distance = obstacle_future.result(timeout=8)
+                    print("distance:", distance)
+                except concurrent.futures.TimeoutError:
+                    print("obstacle detection task timed out")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+ 
                 # Create and send message
                 message = Message(angle, clss_panneaux, distance).encode()
-                print("message")
+                del angle
+                del clss_panneaux
+                del distance
+                del lane_future
+                del panneaux_future
+                del obstacle_future
+
                 print("message: ", message)
 
                 try:
                     client_socket.sendto(message, (server_ip, server_port))
+                    del message
                     print("Message sent")
-                    print(f"angle: {angle}, classes: {clss_panneaux}, distance of obstacle: {distance}")
+                    #print(f"angle: {angle}, classes: {clss_panneaux}, distance of obstacle: {distance}")
                 except Exception as e:
                     print(f"Error sending message: {e}")
+            del executor
 
     except KeyboardInterrupt:
         print("Stopping real-time processing...")
