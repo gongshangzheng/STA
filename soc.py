@@ -383,48 +383,14 @@ class panneauxDetecteur():
             classes.append(result.boxes.cls)
         return classes
 
-    def process_image(self, results):
-        # 获取预测的边界框、类别和置信度
-        for result in results:
-            predicted_boxes = result.boxes.xyxy  # 获取预测的边界框坐标 (x1, y1, x2, y2)
-            predicted_confidences = result.boxes.conf  # 置信度
-            predicted_classes = result.boxes.cls  # 类别索引
-            # print(results)
-            image = result.orig_img
-
-            # 获取类别名称
-            class_names = result.names  # 获取类别名称字典
-
-            # 将边界框和标签绘制回原图
-            for box, conf, cls in zip(predicted_boxes, predicted_confidences, predicted_classes):
-                x1, y1, x2, y2 = box  # 提取边界框的坐标
-
-                # 将边界框坐标转换为图像坐标
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-
-                # 绘制边界框
-                cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-                # 绘制标签
-                label = f'{class_names[int(cls)]}: {conf:.2f}'  # 获取类别名称并显示置信度
-                cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        return image
-    def predict_real_time(self, camera, config, output=False):
+    def predict_real_time(self, frame):
         """
         Real-time prediction using YOLOv8 for object detection.
-
-        :param camera: PiCamera object (from picamera library) for real-time video feed
-        :param output: Whether to save the video to file (default True)
+        :param: frame
         """
         # 定义输出视频的编码格式和保存路径（如果 output=True）
-        if output:
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter('output_real_time.mp4', fourcc, 20, config["main"]["size"])
-
-
         # 开始实时处理
         try:
-            frame = camera.capture_array()
             image = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
             # 使用 YOLOv8 模型进行推理
@@ -433,39 +399,13 @@ class panneauxDetecteur():
 
             # 处理每个检测结果，绘制边界框和标签
             for result in results:
-                if output:
-                    boxes = result.boxes.xyxy  # 获取边界框坐标 (x1, y1, x2, y2)
-                    confidences = result.boxes.conf  # 获取置信度
-
-                    for box, conf, cls in zip(boxes, confidences, result.boxes.cls):
-                        x1, y1, x2, y2 = map(int, box)
-                        label = f'{result.names[int(cls.item())]}: {conf.item():.2f}'
-                        # 绘制边界框和标签
-                        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                        cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                else:
-                    for cls in result.boxes.cls:
-                        classes.append(result.names[int(cls)])
-
-
-
-            # 显示帧率并显示帧图像
-            if output:
-                cv2.imshow("Real-Time YOLOv8", image)
-                out.write(image)
-
-                # 按下 'q' 键退出循环
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    return classes
+                for cls in result.boxes.cls:
+                    classes.append(result.names[int(cls)])
 
             # Yield detected classes for further processing
             return classes
         finally:
-            camera.stop()
-            # 释放资源
-            if output:
-                out.release()
-                cv2.destroyAllWindows()
+           pass
 class obstacleDetecteur():
     def __init__(self):
         self.working_dir = "./"
@@ -473,75 +413,10 @@ class obstacleDetecteur():
         path = self.working_dir + "obstacleDetection.pt"
         self.yolo_model = YOLO(path)
 
-    def predict_video(self, video_path):
-        # Charger la vidéo
-        cap = cv2.VideoCapture(video_path)
-
-        # Get video properties
-        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-
-        # Define the codec and create VideoWriter object
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use appropriate codec for your desired output format
-        out = cv2.VideoWriter('output_obstacle.mp4', fourcc, fps, (frame_width, frame_height))
-
-        # Process and write frames to the output video
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            results = self.yolo_model(frame, conf=self.confidence)  # 直接传入原图，YOLOv8会自动进行预处理
-            image = self.process_image(results)
-
-            # 假设模型的输出 predictions 是一个形状为 (grid_size, grid_size, num_anchors, 5 + num_classes) 的张量
-            # predictions 可能来自于模型的 forward pass
-
-            out.write(image)
-        cap.release()
-        out.release()
-        cv2.destroyAllWindows()
-        classes = []
-        for result in results:
-            classes.append(result.boxes.cls)
-        return classes
-
-    def process_image(self, results):
-        # 获取预测的边界框、类别和置信度
-        for result in results:
-            predicted_boxes = result.boxes.xyxy  # 获取预测的边界框坐标 (x1, y1, x2, y2)
-            predicted_confidences = result.boxes.conf  # 置信度
-            predicted_classes = result.boxes.cls  # 类别索引
-            # print(results)
-            image = result.orig_img
-
-            # 获取类别名称
-            class_names = result.names  # 获取类别名称字典
-
-            # 将边界框和标签绘制回原图
-            for box, conf, cls in zip(predicted_boxes, predicted_confidences, predicted_classes):
-                x1, y1, x2, y2 = box  # 提取边界框的坐标
-
-                # 将边界框坐标转换为图像坐标
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-
-                # 绘制边界框
-                cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-                # 绘制标签
-                label = f'{class_names[int(cls)]}: {conf:.2f}'  # 获取类别名称并显示置信度
-                cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        return image
-
-    def predict_real_time(self, camera, config, output=True):
+    def predict_real_time(self, frame):
         # 定义输出视频的编码格式和保存路径（如果 output=True）
-        if output:
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter('output_real_time.mp4', fourcc, 20, config["main"]["size"])
-
         # 开始实时处理
         try:
-            frame = camera.capture_array()
             # 使用 YOLOv8 模型进行推理
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             results = self.yolo_model(frame, conf=self.confidence)
@@ -553,36 +428,9 @@ class obstacleDetecteur():
                     width = box[2]
                     distance = self.calculate_distance(width)
                     distances.append(distance)
-                if output:
-                    boxes = result.boxes.xyxy  # 提取边界框 (x1, y1, x2, y2)
-                    confidences = result.boxes.conf  # 置信度
-
-                    for box, conf, cls in zip(boxes, confidences, result.boxes.cls):
-                            x1, y1, x2, y2 = map(int, box)
-                            label = f'{result.names[int(cls.item())]}: {conf.item():.2f}'
-
-                            # 绘制边界框和标签
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-            # 显示帧率
-            if output:
-                cv2.imshow("Real-Time YOLOv8", frame)
-                out.write(frame)
-
-                # 按下 'q' 键退出循环
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    return distances
             return distances
-
         finally:
-
-            camera.stop()
-            # 释放资源
-            if output:
-                out.release()
-            cv2.destroyAllWindows()
-
+            pass
     def calculate_distance(self, width):
         # 假设车辆的实际宽度为 1.8 米，相机焦距为 800 像素
         KNOWN_WIDTH = 0.018  # 车辆的已知宽度（米）
@@ -649,13 +497,14 @@ def real_time():
             #i += 1
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
 
+                frame = camera.capture_array()
                 try:
                     # Submit parallel tasks for each detection model
-                    lane_future = executor.submit(lane.predict_angle_realtime, camera, output=False)
+                    lane_future = executor.submit(lane.predict_angle_realtime, frame)
                     #print("lane")
-                    panneaux_future = executor.submit(panneaux.predict_real_time, camera,camera_config, output=False)
+                    panneaux_future = executor.submit(panneaux.predict_real_time, frame)
                     #print("panneaux")
-                    obstacle_future = executor.submit(obstacle.predict_real_time, camera, camera_config, output=False)
+                    obstacle_future = executor.submit(obstacle.predict_real_time, frame)
                     #print("obstacle")
 
                     # Wait and get results
