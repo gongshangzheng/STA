@@ -273,84 +273,7 @@ class laneDetecteur():
         result_image = Image.fromarray(result_array)
         return result_image
 
-    def predict_angle(self, video_path = "/content/Lane.mp4", output=False):
-        """
-        Makes predictions using the YOLOv8n
-        """
-        if(self.yolo_type == "Detection"):
-            print("This function is only for segmentation")
-            return None
-        # Charger la vidéo
-        cap = cv2.VideoCapture(video_path)
-
-        # Get video properties
-        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-
-        if output:
-            #output the video
-            # Define the codec and create VideoWriter object
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use appropriate codec for your desired output format
-            out = cv2.VideoWriter('output_direction.mp4', fourcc, fps, (frame_width, frame_height))
-
-        # get two lines
-        lines = []
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            copy = np.copy(frame)
-            copy[:frame_height // 2, :] = 0
-            isolated = self.get_isolated(copy, None)
-            lines = cv2.HoughLinesP(isolated, 1, np.pi/180, 2, np.array([]), minLineLength=40, maxLineGap=2)
-            averaged_lines = self.average(copy, lines)
-            #return the intersection of the two lines
-            current_x = frame.shape[1] / 2
-            current_y = frame.shape[0]
-            angle = 90
-            limit = 10000
-            if averaged_lines is not None and len(averaged_lines) == 2:
-
-                x1, y1, x2, y2 = averaged_lines[0]
-                x3, y3, x4, y4 = averaged_lines[1]
-                if all(-limit < x < limit and -limit < y < limit for x, y in [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]):
-                    # Your code here
-                    denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
-                    if denominator != 0:
-                        # Calculate intersection point
-                        intersection_x = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denominator
-                        intersection_y = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denominator
-
-                        # Calculate the angle in degrees
-                        angle_radians = - math.atan2(intersection_y - current_y, intersection_x - current_x)
-                        angle_degrees = math.degrees(angle_radians)
-
-                        # Display the guiding line on the frame
-                        if output:
-                            longueur = 3000
-                            end_x = current_x + longueur * math.cos(angle_radians)
-                            end_y = current_y - longueur * math.sin(angle_radians)
-                            cv2.line(frame, (int(current_x), int(current_y)), (int(end_x), int(end_y)), (0, 255, 0), 2)
-                            cv2.line(frame, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 2)
-                            cv2.line(frame, (int(x3), int(y3)), (int(x4), int(y4)), (255, 0, 0), 2)
-                            cv2.putText(frame, f"Angle: {angle_degrees:.2f} degrees", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                            out.write(frame)
-
-                    # Display angle on frame
-
-            # print("angle: ", angle_degrees)
-            # print("radian: ", angle_radians)
-
-
-
-        cap.release()
-        if output:
-            out.release()
-            cv2.destroyAllWindows()
-        return angle_degrees
-
-    def predict_angle_realtime(self, camera, output=False):
+    def predict_angle_realtime(self, frame, output=False):
         """
         Makes real-time predictions using YOLOv8n on live video feed from Raspberry Pi Camera.
         :param camera: The picamera.PICamera object passed from outside.
@@ -363,15 +286,9 @@ class laneDetecteur():
         # camera.resolution = (640, 480)  # You can adjust this as needed
         # camera.framerate = 30  # Set framerate
 
-        if output:
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            frame_width = camera.resolution[0]
-            frame_height = camera.resolution[1]
-            fps = camera.framerate
-            out = cv2.VideoWriter('output_direction_realtime.mp4', fourcc, fps, (frame_width, frame_height))
         try:
             # Capture a frame from the camera
-            frame = camera.capture_array()
+            # frame = camera.capture_array()
             # Process the frame
             copy = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             copy[:frame.shape[0] // 2, :] = 0
@@ -398,80 +315,12 @@ class laneDetecteur():
                         angle_radians = - math.atan2(intersection_y - current_y, intersection_x - current_x)
                         angle_degrees = math.degrees(angle_radians)
 
-                        # Display the guiding line on the frame
-                        if output:
-                            longueur = 3000
-                            end_x = current_x + longueur * math.cos(angle_radians)
-                            end_y = current_y - longueur * math.sin(angle_radians)
-                            cv2.line(frame, (int(current_x), int(current_y)), (int(end_x), int(end_y)), (0, 255, 0), 2)
-                            cv2.line(frame, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 2)
-                            cv2.line(frame, (int(x3), int(y3)), (int(x4), int(y4)), (255, 0, 0), 2)
-                            cv2.putText(frame, f"angle: {angle_degrees:.2f} degrees", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                            out.write(frame)
-
-
-            # Show the frame in real-time
-            if output:
-                cv2.imshow("real-time lane angle prediction", frame)
-
-                # Press 'q' to exit
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    
-                    return angle_degrees
-
             return angle_degrees
         finally:
 
-            camera.stop()
+            # camera.stop()
             # Release resources
-            if output:
-                out.release()
-            cv2.destroyAllWindows()
             # Yield the angle prediction
-
-
-
-    def predict_single_image(self, frame):
-        """
-        处理直接传递的帧（frame）并进行预测，生成二值化图片。
-
-        参数：
-        - frame: 输入帧，可以是 numpy 数组或 PIL.Image。
-        - model: 训练好的模型。
-        - device: 设备类型（如 'cuda' 或 'cpu'）。
-
-        返回：
-        - output_image: 预测后的二值化图片（PIL.Image）。
-        """
-        # 检查输入帧类型并转换为 PIL.Image
-        model = self.yolo_model
-        device = self.device
-        if isinstance(frame, np.ndarray):  # 如果是 numpy 数组
-            image = Image.fromarray(frame).convert("RGB")
-        elif isinstance(frame, Image.Image):  # 如果是 PIL.Image
-            image = frame.convert("RGB")
-        else:
-            raise ValueError("输入帧的类型必须是 numpy 数组或 PIL.Image。")
-
-        original_size = image.size
-
-        # 转换图片
-        input_image = F.resize(image, (256, 256))  # 调整大小
-        input_tensor = F.to_tensor(input_image).unsqueeze(0).to(device)  # 转为张量并放入设备
-
-        # 预测
-        with torch.no_grad():
-            output = model(input_tensor)  # 模型预测
-            output = output.squeeze().cpu().numpy()  # 转为 numpy 数组
-
-        # 二值化处理
-        output = (output > 0.5).astype(np.uint8)  # 阈值化，转换为0和1
-
-        # 还原到原始大小
-        output_image = Image.fromarray((output * 255).astype(np.uint8))  # 转为图片格式
-        output_image = output_image.resize(original_size, Image.BILINEAR)  # 调整回原始大小
-
-        return output_image
 
     def get_isolated(self, frame, yolo_results=None):
         """Traite une seule image de la vidéo."""
@@ -805,7 +654,7 @@ def real_time():
                     lane_future = executor.submit(lane.predict_angle_realtime, camera, output=False)
                     #print("lane")
                     panneaux_future = executor.submit(panneaux.predict_real_time, camera,camera_config, output=False)
-                    #print("panneaux") 
+                    #print("panneaux")
                     obstacle_future = executor.submit(obstacle.predict_real_time, camera, camera_config, output=False)
                     #print("obstacle")
 
@@ -832,7 +681,7 @@ def real_time():
                     print("obstacle detection task timed out")
                 except Exception as e:
                     print(f"An error occurred: {e}")
- 
+
                 # Create and send message
                 message = Message(angle, clss_panneaux, distance).encode()
                 del angle
