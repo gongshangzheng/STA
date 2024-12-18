@@ -273,7 +273,7 @@ class laneDetecteur():
         result_image = Image.fromarray(result_array)
         return result_image
 
-    def predict_angle_realtime(self, frame, output=False):
+    def predict_angle_realtime(self, frame):
         """
         Makes real-time predictions using YOLOv8n on live video feed from Raspberry Pi Camera.
         :param camera: The picamera.PICamera object passed from outside.
@@ -317,10 +317,49 @@ class laneDetecteur():
 
             return angle_degrees
         finally:
+            pass
 
-            # camera.stop()
-            # Release resources
-            # Yield the angle prediction
+    def predict_single_image(self, frame):
+        """
+        处理直接传递的帧（frame）并进行预测，生成二值化图片。
+
+        参数：
+        - frame: 输入帧，可以是 numpy 数组或 PIL.Image。
+        - model: 训练好的模型。
+        - device: 设备类型（如 'cuda' 或 'cpu'）。
+
+        返回：
+        - output_image: 预测后的二值化图片（PIL.Image）。
+        """
+        # 检查输入帧类型并转换为 PIL.Image
+        model = self.yolo_model
+        device = self.device
+        if isinstance(frame, np.ndarray):  # 如果是 numpy 数组
+            image = Image.fromarray(frame).convert("RGB")
+        elif isinstance(frame, Image.Image):  # 如果是 PIL.Image
+            image = frame.convert("RGB")
+        else:
+            raise ValueError("输入帧的类型必须是 numpy 数组或 PIL.Image。")
+
+        original_size = image.size
+
+        # 转换图片
+        input_image = F.resize(image, (256, 256))  # 调整大小
+        input_tensor = F.to_tensor(input_image).unsqueeze(0).to(device)  # 转为张量并放入设备
+
+        # 预测
+        with torch.no_grad():
+            output = model(input_tensor)  # 模型预测
+            output = output.squeeze().cpu().numpy()  # 转为 numpy 数组
+
+        # 二值化处理
+        output = (output > 0.5).astype(np.uint8)  # 阈值化，转换为0和1
+
+        # 还原到原始大小
+        output_image = Image.fromarray((output * 255).astype(np.uint8))  # 转为图片格式
+        output_image = output_image.resize(original_size, Image.BILINEAR)  # 调整回原始大小
+
+        return output_image
 
     def get_isolated(self, frame, yolo_results=None):
         """Traite une seule image de la vidéo."""
