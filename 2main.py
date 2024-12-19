@@ -14,7 +14,6 @@ import numpy as np
 import torch.nn as nn
 import torchvision.transforms.functional as F
 from PIL import Image
-import picamera2
 import concurrent.futures
 # import onnx
 # import onnxruntime as ort
@@ -478,14 +477,49 @@ class obstacleDetecteur():
         return KNOWN_WIDTH * FOCAL_LENGTH / width
 # In[ ]:
 
+class panneauxObstacleDetecteur():
+    def __init__(self):
+        self.working_dir = "./"
+        self.confidence = 0.2
+        path = self.working_dir + "panneauxObstacleDetection.pt"
+        self.yolo_model = YOLO(path)
+
+    def predict_real_time(self, frame):
+        # 定义输出视频的编码格式和保存路径（如果 output=True）
+        # 开始实时处理
+        try:
+            # 使用 YOLOv8 模型进行推理
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            results = self.yolo_model(frame, conf=self.confidence)
+            classes = []  # List to store detected classes
+            # Collect classes detected in this frame
+            # 处理每个检测结果，绘制边界框和标签
+            distances = []
+            for result in results:
+                for box in result.boxes:
+                    cls = box.cls
+                    classes.append(result.names[int(cls)])
+                    if result.names[int(cls)] == "obstacle":
+                        width = box.xywh[2]
+                        distance = self.calculate_distance(width)
+                        distances.append(distance)
+            return classes, distances
+        finally:
+            pass
+    def calculate_distance(self, width):
+        # 假设车辆的实际宽度为 1.8 米，相机焦距为 800 像素
+        KNOWN_WIDTH = 0.018  # 车辆的已知宽度（米）
+        FOCAL_LENGTH = 800  # 焦距（像素）
+
+        return KNOWN_WIDTH * FOCAL_LENGTH / width
 
 # model = obstacleDetecteur()
 # model.predict_video("/content/obstacle.mp4")
-def count_generator(gen):
-    # 创建一个新的生成器副本
-    gen1, gen2 = itertools.tee(gen)
-    nombre_panneaux = sum(1 for _ in gen1)
-    return nombre_panneaux, gen2
+# def count_generator(gen):
+    # # 创建一个新的生成器副本
+    # gen1, gen2 = itertools.tee(gen)
+    # nombre_panneaux = sum(1 for _ in gen1)
+    # return nombre_panneaux, gen2
 
 @dataclass
 class Message:
@@ -518,6 +552,7 @@ class Message:
 
 def real_time():
     # Start capturing from the webcam
+    import picamera2
     camera = picamera2.Picamera2()
     camera_config = camera.create_preview_configuration(main={"size": (640, 480)})
     camera.configure(camera_config)
@@ -598,5 +633,149 @@ def real_time():
         client_socket.close()
 #        yield angle, clss_panneaux, distance
 
+
+def real_time_cv2():
+    # Start capturing from the webcam using OpenCV
+    camera = cv2.VideoCapture(0)  # 0 表示默认摄像头
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    panneaux = panneauxDetecteur()
+    obstacle = obstacleDetecteur()
+    lane = laneDetecteur()
+    server_ip = "127.0.0.1"
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_port = 8080
+
+    try:
+        while True:  # Continuous capture and processing
+            # Capture frame-by-frame
+            ret, frame = camera.read()
+            if not ret:
+                print("Failed to capture frame")
+                break
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                try:
+                    # Submit parallel tasks for each detection model
+                    lane_future = executor.submit(lane.predict_angle_realtime, frame)
+                    panneaux_future = executor.submit(panneaux.predict_real_time, frame)
+                    obstacle_future = executor.submit(obstacle.predict_real_time, frame)
+
+                    # Wait and get results
+                    clss_panneaux = panneaux_future.result(timeout=8)
+                    print("clss_panneaux:", clss_panneaux)
+                except concurrent.futures.TimeoutError:
+                    print("panneaux detection timed out")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+
+                try:
+                    angle = lane_future.result(timeout=8)
+                    print("angle:", angle)
+                except concurrent.futures.TimeoutError:
+                    print("lane segmentation task timed out")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+
+                try:
+                    distance = obstacle_future.result(timeout=8)
+                    print("distance:", distance)
+                except concurrent.futures.TimeoutError:
+                    print("obstacle detection task timed out")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+
+                # Create and send message
+                message = Message(angle, clss_panneaux, distance).encode()
+                print("message: ", message)
+
+                try:
+                    client_socket.sendto(message, (server_ip, server_port))
+                    print("Message sent")
+                except Exception as e:
+                    print(f"Error sending message: {e}")
+
+    except KeyboardInterrupt:
+        print("Stopping real-time processing...")
+
+    finally:
+        camera.release()
+        client_socket.close()
+
+
+def real_time_switch(camera_type='opencv'):
+    if camera_type == 'picamera2':
+        import picamera2
+        camera = picamera2.Picamera2()
+        camera_config = camera.create_preview_configuration(main={"size": (640, 480)})
+        camera.configure(camera_config)
+        camera.start()
+    elif camera_type == 'opencv':
+        camera = cv2.VideoCapture(0)  # 0 表示默认摄像头
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    else:
+        raise ValueError("Invalid camera type. Use 'picamera2' or 'opencv'.")
+
+    panneaux_obstacle = panneauxObstacleDetecteur()
+    lane = laneDetecteur()
+    server_ip = "127.0.0.1"
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_port = 8080
+
+    try:
+        while True:  # Continuous capture and processing
+            if camera_type == 'picamera2':
+                frame = camera.capture_array()
+            elif camera_type == 'opencv':
+                ret, frame = camera.read()
+                if not ret:
+                    print("Failed to capture frame")
+                    break
+            else:
+                return
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                try:
+                    # Submit parallel tasks for each detection model
+                    lane_future = executor.submit(lane.predict_angle_realtime, frame)
+                    panneaux_obstacle_future = executor.submit(panneaux_obstacle.predict_real_time, frame)
+
+                    # Wait and get results
+                    clss_panneaux, distance = panneaux_obstacle_future.result(timeout=8)
+                    print("clss_panneaux:", clss_panneaux)
+                except concurrent.futures.TimeoutError:
+                    print("panneaux detection timed out")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+
+                try:
+                    angle = lane_future.result(timeout=8)
+                    print("angle:", angle)
+                except concurrent.futures.TimeoutError:
+                    print("lane segmentation task timed out")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+
+                # Create and send message
+                message = Message(angle, clss_panneaux, distance).encode()
+                print("message: ", message)
+
+                try:
+                    client_socket.sendto(message, (server_ip, server_port))
+                    print("Message sent")
+                except Exception as e:
+                    print(f"Error sending message: {e}")
+
+    except KeyboardInterrupt:
+        print("Stopping real-time processing...")
+
+    finally:
+        if camera_type == 'picamera2':
+            camera.stop()
+        elif camera_type == 'opencv':
+            camera.release()
+        client_socket.close()
 # if __name__ == "__main__":
-real_time()
+real_time_cv2()

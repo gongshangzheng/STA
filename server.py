@@ -12,35 +12,29 @@
 import socket
 
 # 服务器配置
-SERVER_IP = '0.0.0.0'  # 监听所有可用网络接口
-SERVER_PORT = 12345   # 选择一个未被使用的端口
-
-# 创建UDP套接字
-def create_udp_server():
-    # 使用AF_INET (IPv4) 和 SOCK_DGRAM (UDP)
+def udp_server(host='0.0.0.0', port=8080):
+    # 创建一个 UDP 套接字
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    # 绑定IP和端口
-    server_socket.bind((SERVER_IP, SERVER_PORT))
+    # 绑定到指定的地址和端口
+    server_socket.bind((host, port))
 
-    print(f"UDP服务器已启动，监听 {SERVER_IP}:{SERVER_PORT}")
+    print(f"UDP server is listening on {host}:{port}")
 
-    while True:
-        try:
+    try:
+        while True:
             # 接收数据
-            data, client_address = server_socket.recvfrom(1024)  # 缓冲区大小1024字节
+            data, addr = server_socket.recvfrom(1024)  # 缓冲区大小为1024字节
+            print(f"Received message from {addr}: {data.decode('utf-8')}")
 
-            # 解码并打印接收到的数据
-            message = data.decode('utf-8')
-            print(f"收到来自 {client_address} 的消息: {message}")
+            # 这里可以添加处理数据的逻辑
+            # 例如，回复客户端
+            # server_socket.sendto(b"Message received", addr)
 
-            # 可选：发送回复
-            response = f"服务器已接收: {message}"
-            server_socket.sendto(response.encode('utf-8'), client_address)
+    except KeyboardInterrupt:
+        print("Server is shutting down.")
+    finally:
+        server_socket.close()
 
-        except Exception as e:
-            print(f"发生错误: {e}")
-
-# 启动服务器
-if __name__ == '__main__':
-    create_udp_server()
+if __name__ == "__main__":
+    udp_server()
