@@ -496,11 +496,10 @@ class panneauxObstacleDetecteur():
             # 处理每个检测结果，绘制边界框和标签
             distances = []
             for result in results:
-                for box in result.boxes:
-                    cls = box.cls
+                for box, cls in zip(result.boxes.xywh, result.boxes.cls):
                     classes.append(result.names[int(cls)])
-                    if result.names[int(cls)] == "obstacle":
-                        width = box.xywh[2]
+                    if result.names[int(cls)] == "Obstacle":
+                        width = box[2]
                         distance = self.calculate_distance(width)
                         distances.append(distance)
             return classes, distances
@@ -729,9 +728,10 @@ def real_time_switch(camera_type='opencv'):
     else:
         raise ValueError("Invalid camera type. Use 'picamera2' or 'opencv'.")
 
-    panneaux = panneauxDetecteur()
-    obstacle = obstacleDetecteur()
+    # panneaux = panneauxDetecteur()
+    # obstacle = obstacleDetecteur()
     lane = laneDetecteur()
+    panneaux_obstacle = panneauxObstacleDetecteur()
     server_ip = "127.0.0.1"
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_port = 8080
@@ -745,21 +745,27 @@ def real_time_switch(camera_type='opencv'):
                 if not ret:
                     print("Failed to capture frame")
                     break
+            else:
+                return
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
                 try:
                     # Submit parallel tasks for each detection model
                     lane_future = executor.submit(lane.predict_angle_realtime, frame)
-                    panneaux_future = executor.submit(panneaux.predict_real_time, frame)
-                    obstacle_future = executor.submit(obstacle.predict_real_time, frame)
-
+                    # panneaux_future = executor.submit(panneaux.predict_real_time, frame)
+                    # obstacle_future = executor.submit(obstacle.predict_real_time, frame)
+                    panneaux_obstacle_future = executor.submit(panneaux_obstacle.predict_real_time, frame)
                     # Wait and get results
-                    clss_panneaux = panneaux_future.result(timeout=8)
-                    print("clss_panneaux:", clss_panneaux)
+                    # clss_panneaux = panneaux_future.result(timeout=8)
+                    clss_panneaux, distance = panneaux_obstacle_future.result(timeout=8)
+                    # print("clss_distance:", clss_distance)
+                    # print("clss_panneaux:", clss_panneaux)
                 except concurrent.futures.TimeoutError:
                     print("panneaux detection timed out")
+                    return
                 except Exception as e:
                     print(f"An error occurred: {e}")
+                    return
 
                 try:
                     angle = lane_future.result(timeout=8)
@@ -769,13 +775,13 @@ def real_time_switch(camera_type='opencv'):
                 except Exception as e:
                     print(f"An error occurred: {e}")
 
-                try:
-                    distance = obstacle_future.result(timeout=8)
-                    print("distance:", distance)
-                except concurrent.futures.TimeoutError:
-                    print("obstacle detection task timed out")
-                except Exception as e:
-                    print(f"An error occurred: {e}")
+                # try:
+                    # distance = obstacle_future.result(timeout=8)
+                    # print("distance:", distance)
+                # except concurrent.futures.TimeoutError:
+                    # print("obstacle detection task timed out")
+                # except Exception as e:
+                    # print(f"An error occurred: {e}")
 
                 # Create and send message
                 message = Message(angle, clss_panneaux, distance).encode()
